@@ -122,7 +122,7 @@ int main(int argc, char **args)
     fclose(f);
     Context ctx = {.lambda0 = 1.0, .lambda1 = 2.0, .mu0 = 3.0, .mu1 = 4.0, .ratio = 0.25, .ne = 16, .tol = 1.0e-7};
     Mat A;
-    Vec ones, b[CORRECTORS_NUM], N[CORRECTORS_NUM];
+    Vec ones, *b, *N;
     KSP ksp;
     int total_element_num = ctx.ne * ctx.ne * ctx.ne;
     int total_freedom_deg = total_element_num * FREEDOM_DEG_PER_NODE;
@@ -139,20 +139,20 @@ int main(int argc, char **args)
     CHKERRQ(ierr);
     ierr = VecSet(ones, 1.0);
     CHKERRQ(ierr);
-    ierr = VecDuplicateVecs(ones, CORRECTORS_NUM, (Vec **)&b);
-    ierr = VecDuplicateVecs(ones, CORRECTORS_NUM, (Vec **)&N);
-    ierr = PetscObjectSetName((PetscObject)N[0], "N11");
-    ierr = PetscObjectSetName((PetscObject)N[1], "N12");
-    ierr = PetscObjectSetName((PetscObject)N[2], "N13");
-    ierr = PetscObjectSetName((PetscObject)N[3], "N22");
-    ierr = PetscObjectSetName((PetscObject)N[4], "N23");
-    ierr = PetscObjectSetName((PetscObject)N[5], "N33");
+    ierr = VecDuplicateVecs(ones, CORRECTORS_NUM, &b);
+    ierr = VecDuplicateVecs(ones, CORRECTORS_NUM, &N);
+    ierr = PetscObjectSetName((PetscObject)(N[0]), "N11");
+    ierr = PetscObjectSetName((PetscObject)(N[1]), "N12");
+    ierr = PetscObjectSetName((PetscObject)(N[2]), "N13");
+    ierr = PetscObjectSetName((PetscObject)(N[3]), "N22");
+    ierr = PetscObjectSetName((PetscObject)(N[4]), "N23");
+    ierr = PetscObjectSetName((PetscObject)(N[5]), "N33");
     CHKERRQ(ierr);
     ierr = MatCreateSeqAIJ(PETSC_COMM_SELF, total_freedom_deg, total_freedom_deg, 3 * 3 * 3 * FREEDOM_DEG_PER_NODE, NULL, &A); // Each freedom degree intersects with 27*3 freedom degrees.
     CHKERRQ(ierr);
     // Construct linear systems.
     get_wall_time(wall_time);
-    PetscPrintf(PETSC_COMM_SELF, "%s\t Begin to construct linear systems.\n", wall_time);
+    PetscPrintf(PETSC_COMM_SELF, "%s\tBegin to construct linear systems.\n", wall_time);
     int ele_ind, ele_ind_x, ele_ind_y, ele_ind_z; // Element index components ele_ind = ele_ind_x+ne*ele_ind_y+ne*ne*ele_ind_z
     int ai, bj;                                   // Local index
     int aix, aiy, aiz, aik;                       // Local index components
@@ -208,7 +208,10 @@ int main(int argc, char **args)
     }
     // Need to tell the solver that the constant solution should not be included.
     MatNullSpace mns;
-    ierr = MatNullSpaceCreate(PETSC_COMM_SELF, PETSC_TRUE, 1, &ones, &mns);
+    double norm2;
+    VecNorm(ones, NORM_2, &norm2);
+    VecScale(ones, 1.0/norm2);
+    ierr = MatNullSpaceCreate(PETSC_COMM_SELF, PETSC_FALSE, 1, &ones, &mns);
     CHKERRQ(ierr);
     ierr = MatSetNullSpace(A, mns);
     ierr = MatSetTransposeNullSpace(A, mns);
@@ -228,7 +231,7 @@ int main(int argc, char **args)
     {
         ierr = KSPSolve(ksp, b[mn], N[mn]);
         CHKERRQ(ierr);
-        PetscObjectGetName((PetscObject)N[mn], &name);
+        PetscObjectGetName((PetscObject)(N[mn]), (const char **)&name);
         get_wall_time(wall_time);
         PetscPrintf(PETSC_COMM_SELF, "%s\t%s has been solved.\n", wall_time, name);
     }
@@ -236,7 +239,7 @@ int main(int argc, char **args)
     PetscViewer fw;
     for (mn = 0; mn < CORRECTORS_NUM; ++mn)
     {
-        PetscObjectGetName(N[mn], name);
+        PetscObjectGetName((PetscObject)(N[mn]), (const char **)&name);
         ierr = PetscViewerHDF5Open(PETSC_COMM_SELF, strcat(name, ".hdf5"), FILE_MODE_WRITE, &fw);
         ierr = VecView(N[mn], fw);
         CHKERRQ(ierr);
@@ -297,8 +300,8 @@ int main(int argc, char **args)
     PetscPrintf(PETSC_COMM_SELF, "%s\tSave homogenized coefficients into file.\n", wall_time);
     // Free resource
     ierr = MatDestroy(&A);
-    ierr = VecDestroyVecs(CORRECTORS_NUM, (Vec **)&N);
-    ierr = VecDestroyVecs(CORRECTORS_NUM, (Vec **)&b);
+    ierr = VecDestroyVecs(CORRECTORS_NUM, &N);
+    ierr = VecDestroyVecs(CORRECTORS_NUM, &b);
     ierr = VecDestroy(&ones);
     ierr = KSPDestroy(&ksp);
     CHKERRQ(ierr);
