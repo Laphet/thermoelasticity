@@ -13,6 +13,7 @@ static char wall_time[26];
 #define FREEDOM_DEG_PER_ELE 24
 #define CORRECTORS_NUM 6
 #define NODE_NUM_PER_ELE 8
+#define MAX_LENGTH_FILE_NAME 26
 
 void get_wall_time(char *buffer)
 {
@@ -35,6 +36,7 @@ static double stiffA[FREEDOM_DEG_PER_ELE * FREEDOM_DEG_PER_ELE];
 static double stiffB[FREEDOM_DEG_PER_ELE * FREEDOM_DEG_PER_ELE];
 static double stiffC[FREEDOM_DEG_PER_ELE * FREEDOM_DEG_PER_ELE];
 static double load[FREEDOM_DEG_PER_ELE];
+static char name[CORRECTORS_NUM][MAX_LENGTH_FILE_NAME] = {"N11", "N12", "N13", "N22", "N23", "N33"};
 
 double
 get_lambda(int ele_ind_x, int ele_ind_y, int ele_ind_z, Context *ctx)
@@ -210,7 +212,7 @@ int main(int argc, char **args)
     MatNullSpace mns;
     double norm2;
     VecNorm(ones, NORM_2, &norm2);
-    VecScale(ones, 1.0/norm2);
+    VecScale(ones, 1.0 / norm2);
     ierr = MatNullSpaceCreate(PETSC_COMM_SELF, PETSC_FALSE, 1, &ones, &mns);
     CHKERRQ(ierr);
     ierr = MatSetNullSpace(A, mns);
@@ -226,25 +228,27 @@ int main(int argc, char **args)
     ierr = KSPSetFromOptions(ksp);
     CHKERRQ(ierr);
     // Solving process begins
-    char name[8];
+    int iter_count;
     for (mn = 0; mn < CORRECTORS_NUM; ++mn)
     {
         ierr = KSPSolve(ksp, b[mn], N[mn]);
         CHKERRQ(ierr);
-        PetscObjectGetName((PetscObject)(N[mn]), (const char **)&name);
+        ierr = KSPGetIterationNumber(ksp, &iter_count);
+        CHKERRQ(ierr);
         get_wall_time(wall_time);
-        PetscPrintf(PETSC_COMM_SELF, "%s\t%s has been solved.\n", wall_time, name);
+        PetscPrintf(PETSC_COMM_SELF, "%s\t%s has been solved, iteration num=%d.\n", wall_time, name[mn], iter_count);
     }
     // Saving correctors
     PetscViewer fw;
+    char filename[MAX_LENGTH_FILE_NAME];
     for (mn = 0; mn < CORRECTORS_NUM; ++mn)
     {
-        PetscObjectGetName((PetscObject)(N[mn]), (const char **)&name);
-        ierr = PetscViewerHDF5Open(PETSC_COMM_SELF, strcat(name, ".hdf5"), FILE_MODE_WRITE, &fw);
+        snprintf(filename, MAX_LENGTH_FILE_NAME, "%s-ne%d.hdf5", name[mn], ctx.ne);
+        ierr = PetscViewerHDF5Open(PETSC_COMM_SELF, filename, FILE_MODE_WRITE, &fw);
         ierr = VecView(N[mn], fw);
         CHKERRQ(ierr);
         get_wall_time(wall_time);
-        PetscPrintf(PETSC_COMM_SELF, "%s\t%s has been saved.\n", wall_time, name);
+        PetscPrintf(PETSC_COMM_SELF, "%s\t%s has been saved.\n", wall_time, name[mn]);
     }
     ierr = PetscViewerDestroy(&fw);
     CHKERRQ(ierr);
@@ -291,10 +295,14 @@ int main(int argc, char **args)
         C2223 += h * h * (lambda * get_local_div_integral(&local_data[4][0]) + mu * get_local_grad_pair_integral(&local_data[4][0], 1, 1));
         C3323 += h * h * (lambda * get_local_div_integral(&local_data[4][0]) + mu * get_local_grad_pair_integral(&local_data[4][0], 2, 2));
     }
-    f = fopen("homogenized_coefficients.dat", "r");
-    fprintf(f, "C1111=%f  C2222=%f  C3333=%f  C1122=%f  C1133=%f  C2233=%f\n", C1111, C2222, C3333, C1122, C1133, C2233);
-    fprintf(f, "C1212=%f  C1313=%f  C2323=%f  C1213=%f  C1223=%f  C1323=%f\n", C1212, C1313, C2323, C1213, C1223, C1323);
-    fprintf(f, "C1112=%f  C1113=%f  C1123=%f  C2213=%f  C2223=%f  C3323=%f\n", C1112, C1113, C1123, C2213, C2223, C3323);
+    f = fopen("homogenized_coefficients.dat", "w");
+    fprintf(f, "lambda0=%.4f\tmu0=%.4f\n", ctx.lambda0, ctx.mu0);
+    fprintf(f, "lambda1=%.4f\tmu1=%.4f\n", ctx.lambda1, ctx.mu1);
+    fprintf(f, "===============================================================================================\n");
+    fprintf(f, "C1111=%.4f\tC2222=%.4f\tC3333=%.4f\tC1122=%.4f\tC1133=%.4f\tC2233=%.4f\n", C1111, C2222, C3333, C1122, C1133, C2233);
+    fprintf(f, "C1212=%.4f\tC1313=%.4f\tC2323=%.4f\tC1213=%.4f\tC1223=%.4f\tC1323=%.4f\n", C1212, C1313, C2323, C1213, C1223, C1323);
+    fprintf(f, "C1112=%.4f\tC1113=%.4f\tC1123=%.4f\tC2213=%.4f\tC2223=%.4f\tC3323=%.4f\n", C1112, C1113, C1123, C2213, C2223, C3323);
+    fprintf(f, "===============================================================================================\n");
     fclose(f);
     get_wall_time(wall_time);
     PetscPrintf(PETSC_COMM_SELF, "%s\tSave homogenized coefficients into file.\n", wall_time);
