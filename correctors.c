@@ -126,8 +126,8 @@ int main(int argc, char **args)
     Mat A;
     Vec ones, *b, *N;
     KSP ksp;
-    int total_element_num = ctx.ne * ctx.ne * ctx.ne;
-    int total_freedom_deg = total_element_num * FREEDOM_DEG_PER_NODE;
+    int total_element_num;
+    int total_freedom_deg;
     PetscErrorCode ierr;
     ierr = PetscInitialize(&argc, &args, (char *)0, help);
     if (ierr)
@@ -137,6 +137,8 @@ int main(int argc, char **args)
     get_wall_time(wall_time);
     PetscPrintf(PETSC_COMM_SELF, "%s\tSTART!\tuse grid (%d*%d*%d).\n", wall_time, ctx.ne, ctx.ne, ctx.ne);
     // Create PETSc vector and matrix objects, here we use sequencial form.
+    total_element_num = ctx.ne * ctx.ne * ctx.ne;
+    total_freedom_deg = FREEDOM_DEG_PER_NODE * total_element_num;
     ierr = VecCreateSeq(PETSC_COMM_SELF, total_freedom_deg, &ones);
     CHKERRQ(ierr);
     ierr = VecSet(ones, 1.0);
