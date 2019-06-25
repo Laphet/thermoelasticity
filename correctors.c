@@ -298,6 +298,7 @@ int main(int argc, char **args)
     f = fopen("homogenized_coefficients.dat", "w");
     fprintf(f, "lambda0=%.4f\tmu0=%.4f\n", ctx.lambda0, ctx.mu0);
     fprintf(f, "lambda1=%.4f\tmu1=%.4f\n", ctx.lambda1, ctx.mu1);
+    fprintf(f, "Use grid (%d*%d*%d)\n", ctx.ne, ctx.ne, ctx.ne);
     fprintf(f, "===============================================================================================\n");
     fprintf(f, "C1111=%.4f\tC2222=%.4f\tC3333=%.4f\tC1122=%.4f\tC1133=%.4f\tC2233=%.4f\n", C1111, C2222, C3333, C1122, C1133, C2233);
     fprintf(f, "C1212=%.4f\tC1313=%.4f\tC2323=%.4f\tC1213=%.4f\tC1223=%.4f\tC1323=%.4f\n", C1212, C1313, C2323, C1213, C1223, C1323);
