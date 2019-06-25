@@ -58,7 +58,8 @@ get_mu(int ele_ind_x, int ele_ind_y, int ele_ind_z, Context *ctx)
         return ctx->mu1;
 }
 
-int get_freedom_index(int idx, int idy, int idz, int i, Context *ctx)
+int
+get_freedom_index(int idx, int idy, int idz, int i, Context *ctx)
 {
     idx = idx % ctx->ne;
     idy = idy % ctx->ne;
@@ -66,7 +67,8 @@ int get_freedom_index(int idx, int idy, int idz, int i, Context *ctx)
     return FREEDOM_DEG_PER_NODE * (idx + ctx->ne * idy + ctx->ne * ctx->ne * idz) + i;
 }
 
-void decode_local_index(int a, int *ax, int *ay, int *az, int *i)
+void
+decode_local_index(int a, int *ax, int *ay, int *az, int *i)
 // a = 3(ax+2ay+4az)+i
 {
     *i = a % FREEDOM_DEG_PER_NODE;
@@ -77,7 +79,7 @@ void decode_local_index(int a, int *ax, int *ay, int *az, int *i)
 
 double
 get_local_grad_pair_integral(double *local_data, int i, int j)
-// Calculate int_hat(T) partial N_i/partial y_j+partial N_j/partial y_i
+// Calculate int_hat(T) partial N_i/partial y_j+partial N_j/partial y_i dy
 {
     double ans = 0.0;
     int k;
@@ -91,6 +93,7 @@ get_local_grad_pair_integral(double *local_data, int i, int j)
 
 double
 get_local_div_integral(double *local_data)
+// Calculate int_hat(T) Div(N) dy
 {
     double ans = 0.0;
     int k;
@@ -99,14 +102,16 @@ get_local_div_integral(double *local_data)
     return ans;
 }
 
-void load_data(double *data, FILE *f, int max_length)
+void
+load_data(double *data, FILE *f, int max_length)
 {
     int i;
     for (i = 0; i < max_length; ++i)
         fscanf(f, "%lf", &data[i]);
 }
 
-int main(int argc, char **args)
+int
+main(int argc, char **args)
 {
     // Load datas of local stiffness and local load.
     FILE *f;
@@ -297,11 +302,11 @@ int main(int argc, char **args)
         C2223 += h * h * (lambda * get_local_div_integral(&local_data[4][0]) + mu * get_local_grad_pair_integral(&local_data[4][0], 1, 1));
         C3323 += h * h * (lambda * get_local_div_integral(&local_data[4][0]) + mu * get_local_grad_pair_integral(&local_data[4][0], 2, 2));
     }
-    f = fopen("homogenized_coefficients.dat", "w");
+    f = fopen("homogenized_coefficients.dat", "a");
     fprintf(f, "lambda0=%.4f\tmu0=%.4f\n", ctx.lambda0, ctx.mu0);
     fprintf(f, "lambda1=%.4f\tmu1=%.4f\n", ctx.lambda1, ctx.mu1);
-    fprintf(f, "Use grid (%d*%d*%d)\n", ctx.ne, ctx.ne, ctx.ne);
-    fprintf(f, "===============================================================================================\n");
+    fprintf(f, "Use grid (%d*%d*%d), ratio=%.4f\n", ctx.ne, ctx.ne, ctx.ne, ctx.ratio);
+    fprintf(f, "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
     fprintf(f, "C1111=%.4f\tC2222=%.4f\tC3333=%.4f\tC1122=%.4f\tC1133=%.4f\tC2233=%.4f\n", C1111, C2222, C3333, C1122, C1133, C2233);
     fprintf(f, "C1212=%.4f\tC1313=%.4f\tC2323=%.4f\tC1213=%.4f\tC1223=%.4f\tC1323=%.4f\n", C1212, C1313, C2323, C1213, C1223, C1323);
     fprintf(f, "C1112=%.4f\tC1113=%.4f\tC1123=%.4f\tC2213=%.4f\tC2223=%.4f\tC3323=%.4f\n", C1112, C1113, C1123, C2213, C2223, C3323);
