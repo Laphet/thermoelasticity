@@ -33,13 +33,27 @@ void set_default_bdrycons(Context *ctx)
     ctx->Tx1 = 1.50;
     ctx->Ty0 = 1.25;
     ctx->Ty1 = 1.75;
-    ctx->Tz0 = 2.00;
+    ctx->Tz0 = 1.00;
 }
 
 void set_default_mesh(Context *ctx)
 {
     ctx->nc = 16;
     ctx->nse = 4;
+}
+
+void set_test_context(Context *ctx)
+{
+    // -Delta u = 0.0 u = 1-z
+    ctx->cell.kappa0 = 1.0;
+    ctx->cell.kappa1 = 1.0;
+    ctx->H = 0.0;
+    ctx->Tx0 = 0.0;
+    ctx->Tx1 = 0.0;
+    ctx->Ty0 = 0.0;
+    ctx->Ty1 = 0.0;
+    ctx->Tz0 = 2.0;
+    ctx->alpha = 1.0;
 }
 
 void load_stiffness_data(FILE *f, double *stiff)
@@ -84,6 +98,7 @@ void get_stencil(MatStencil base_st, MatStencil *st, int local_index, Context *c
 extern PetscErrorCode ComputeMatrix(KSP, Mat, Mat, void *);
 extern PetscErrorCode ComputeRHS(KSP, Vec, void *);
 extern PetscErrorCode ComputeInitialGuess(KSP, Vec, void *);
+extern PetscErrorCode ComputeError(KSP, Context *);
 
 int main(int argc, char **argv)
 {
@@ -108,13 +123,17 @@ int main(int argc, char **argv)
     PetscViewer fw;
     char file_name[MAX_LENGTH_FILE_NAME];
     int total_ne, iter_count;
+    PetscBool test_flag = PETSC_FALSE;
 
     ierr = PetscInitialize(&argc, &argv, (char *)0, help);
     if (ierr)
         return ierr;
     ierr = PetscOptionsGetInt(NULL, NULL, "-nc", &(ctx.nc), NULL);
     ierr = PetscOptionsGetInt(NULL, NULL, "-nse", &(ctx.nse), NULL);
+    ierr = PetscOptionsGetBool(NULL, NULL, "-test", &test_flag, NULL);
     CHKERRQ(ierr);
+    if (test_flag)
+        set_test_context(&ctx);
     total_ne = ctx.nc * ctx.nse;
     get_wall_time(wall_time);
     PetscPrintf(PETSC_COMM_WORLD,
@@ -168,6 +187,12 @@ int main(int argc, char **argv)
     PetscPrintf(PETSC_COMM_WORLD, "%s\tThe linear system has been solved, iteration num=%d and residual norm=%.4f.\n",
                 wall_time, iter_count, (double)norm);
 
+    if (test_flag)
+    {
+        ierr = ComputeError(ksp, &ctx);
+        CHKERRQ(ierr);
+    }
+
     snprintf(file_name, MAX_LENGTH_FILE_NAME, "data/theta-nc%d-nse%d.hdf5", ctx.nc, ctx.nse);
     ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, file_name, FILE_MODE_WRITE, &fw);
     CHKERRQ(ierr);
@@ -189,7 +214,7 @@ int main(int argc, char **argv)
 
 PetscErrorCode ComputeMatrix(KSP ksp, Mat jac, Mat B, void *ctx_)
 {
-    DM da;
+    DM dm;
     PetscErrorCode ierr;
     MatStencil row[NODE_NUM_PER_ELE], col[NODE_NUM_PER_ELE], base_st;
     int i, j, k, xm, ym, zm, xs, ys, zs, a, b, a_, b_;
@@ -200,9 +225,9 @@ PetscErrorCode ComputeMatrix(KSP ksp, Mat jac, Mat B, void *ctx_)
     h = 1.0 / (double)total_ne;
 
     PetscFunctionBeginUser;
-    ierr = KSPGetDM(ksp, &da);
+    ierr = KSPGetDM(ksp, &dm);
     CHKERRQ(ierr);
-    ierr = DMDAGetCorners(da, &xs, &ys, &zs, &xm, &ym, &zm);
+    ierr = DMDAGetCorners(dm, &xs, &ys, &zs, &xm, &ym, &zm);
 
     for (i = xs; (i < xs + xm) && (i < total_ne); ++i)
         for (j = ys; (j < ys + ym) && (j < total_ne); ++j)
@@ -281,7 +306,7 @@ PetscErrorCode ComputeRHS(KSP ksp, Vec b, void *ctx_)
                 for (a = 0; a < NODE_NUM_PER_ELE; ++a)
                 {
                     get_stencil(base_st, &row, a, ctx);
-                    if (((i_=row.i) >= 0) && ((j_=row.j) >= 0) && ((k_=row.k) >= 0))
+                    if (((i_ = row.i) >= 0) && ((j_ = row.j) >= 0) && ((k_ = row.k) >= 0))
                     {
                         // Source term
                         barray[k_][j_][i_] += h * h * h * ctx->H / (double)(NODE_NUM_PER_ELE);
@@ -324,5 +349,47 @@ PetscErrorCode ComputeInitialGuess(KSP ksp, Vec b, void *ctx)
     PetscFunctionBeginUser;
     ierr = VecSet(b, 0);
     CHKERRQ(ierr);
+    PetscFunctionReturn(0);
+}
+
+PetscErrorCode ComputeError(KSP ksp, Context *ctx)
+{
+    PetscErrorCode ierr;
+    PetscInt i, j, k, xm, ym, zm, xs, ys, zs;
+    DM dm;
+    Vec x, u;
+    PetscScalar ***barray;
+    double h, error;
+    int total_ne;
+
+    total_ne = ctx->nc * ctx->nse;
+    h = 1.0 / (double)(total_ne);
+
+    PetscFunctionBeginUser;
+    ierr = KSPGetDM(ksp, &dm);
+    ierr = KSPGetSolution(ksp, &x);
+    ierr = VecDuplicate(x, &u);
+    CHKERRQ(ierr);
+
+    ierr = DMDAGetCorners(dm, &xs, &ys, &zs, &xm, &ym, &zm);
+    CHKERRQ(ierr);
+    ierr = DMDAVecGetArray(dm, u, &barray);
+    CHKERRQ(ierr);
+
+    for (k = zs; k < zs + zm; ++k)
+        for (j = ys; j < ys + ym; ++j)
+            for (i = xs; i < xs + xm; ++i)
+                barray[k][j][i] = 1.0 - k * h;
+
+    ierr = DMDAVecRestoreArray(dm, u, &barray);
+    CHKERRQ(ierr);
+    ierr = VecAXPY(u, -1.0, x);
+    CHKERRQ(ierr);
+    ierr = VecNorm(u, NORM_INFINITY, &error);
+    CHKERRQ(ierr);
+    get_wall_time(wall_time);
+    PetscPrintf(PETSC_COMM_WORLD, "%s\tUse (-Laplace u = 0, u=1-z) as test problem, the error in l^infinity norm is %.4f.\n",
+                wall_time, error);
+
     PetscFunctionReturn(0);
 }
