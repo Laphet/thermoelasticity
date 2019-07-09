@@ -150,6 +150,8 @@ int main(int argc, char **argv)
     CHKERRQ(ierr);
     ierr = DMSetUp(da);
     CHKERRQ(ierr);
+    get_wall_time(wall_time);
+    PetscPrintf(PETSC_COMM_WORLD, "%s\tFinish constructing DMDA.\n", wall_time);
     ierr = KSPSetDM(ksp, da);
     CHKERRQ(ierr);
     ierr = KSPSetComputeInitialGuess(ksp, ComputeInitialGuess, NULL);
@@ -163,6 +165,8 @@ int main(int argc, char **argv)
 
     ierr = KSPSetFromOptions(ksp);
     CHKERRQ(ierr);
+    get_wall_time(wall_time);
+    PetscPrintf(PETSC_COMM_WORLD, "%s\tFinish constructing KSP and prepare to solve equation.\n", wall_time);
     ierr = KSPSolve(ksp, NULL, NULL);
     CHKERRQ(ierr);
     ierr = KSPGetIterationNumber(ksp, &iter_count);
@@ -193,16 +197,19 @@ int main(int argc, char **argv)
         CHKERRQ(ierr);
     }
 
-    snprintf(file_name, MAX_LENGTH_FILE_NAME, "data/theta-nc%d-nse%d.hdf5", ctx.nc, ctx.nse);
-    ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, file_name, FILE_MODE_WRITE, &fw);
-    CHKERRQ(ierr);
-    ierr = VecView(x, fw);
-    CHKERRQ(ierr);
-    get_wall_time(wall_time);
-    PetscPrintf(PETSC_COMM_WORLD, "%s\tThe solution has been saved into file [%s].\n",
-                wall_time, file_name);
-    ierr = PetscViewerDestroy(&fw);
-    CHKERRQ(ierr);
+    if (!test_flag)
+    {
+        snprintf(file_name, MAX_LENGTH_FILE_NAME, "data/theta-nc%d-nse%d.hdf5", ctx.nc, ctx.nse);
+        ierr = PetscViewerHDF5Open(PETSC_COMM_WORLD, file_name, FILE_MODE_WRITE, &fw);
+        CHKERRQ(ierr);
+        ierr = VecView(x, fw);
+        CHKERRQ(ierr);
+        get_wall_time(wall_time);
+        PetscPrintf(PETSC_COMM_WORLD, "%s\tThe solution has been saved into file [%s].\n",
+                    wall_time, file_name);
+        ierr = PetscViewerDestroy(&fw);
+        CHKERRQ(ierr);
+    }
 
     ierr = VecDestroy(&r);
     CHKERRQ(ierr);
@@ -225,6 +232,9 @@ PetscErrorCode ComputeMatrix(KSP ksp, Mat jac, Mat B, void *ctx_)
     h = 1.0 / (double)total_ne;
 
     PetscFunctionBeginUser;
+    get_wall_time(wall_time);
+    PetscPrintf(PETSC_COMM_WORLD, "%s\tBegin to construct operator.\n",
+                wall_time);
     ierr = KSPGetDM(ksp, &dm);
     CHKERRQ(ierr);
     ierr = DMDAGetCorners(dm, &xs, &ys, &zs, &xm, &ym, &zm);
@@ -283,6 +293,8 @@ PetscErrorCode ComputeRHS(KSP ksp, Vec b, void *ctx_)
     h = 1.0 / (double)(total_ne);
 
     PetscFunctionBeginUser;
+    get_wall_time(wall_time);
+    PetscPrintf(PETSC_COMM_WORLD, "%s\tBegin to construct rhs.\n", wall_time);
     ierr = KSPGetDM(ksp, &dm);
     CHKERRQ(ierr);
 
